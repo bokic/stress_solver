@@ -1,5 +1,4 @@
-#ifndef STRESS_LIB_H
-#define STRESS_LIB_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,5 +62,3 @@ void stress_free(StressModel* model);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // STRESS_LIB_H
