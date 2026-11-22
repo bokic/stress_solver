@@ -586,3 +586,184 @@ const double* stress_model_get_displacements(const StressModel* model) {
 const double* stress_model_get_reactions(const StressModel* model) {
     return model ? model->reactions : NULL;
 }
+
+/* Generic array mutator helpers */
+static int insert_item(void** arr, int* count, int* cap, int index,
+                       const void* elem, size_t elem_size) {
+    if (index < 0 || index > *count) return -1;
+    if (ensure_capacity(arr, cap, *count, elem_size) != 0) return -1;
+    char* base = (char*)(*arr);
+    if (index < *count) {
+        memmove(base + (size_t)(index + 1) * elem_size,
+                base + (size_t)index * elem_size,
+                (size_t)(*count - index) * elem_size);
+    }
+    memcpy(base + (size_t)index * elem_size, elem, elem_size);
+    (*count)++;
+    return 0;
+}
+
+static int delete_item(void* arr, int* count, int index, size_t elem_size) {
+    if (!arr || index < 0 || index >= *count) return -1;
+    char* base = (char*)arr;
+    if (index < *count - 1) {
+        memmove(base + (size_t)index * elem_size,
+                base + (size_t)(index + 1) * elem_size,
+                (size_t)(*count - index - 1) * elem_size);
+    }
+    (*count)--;
+    return 0;
+}
+
+static Joint make_joint(int id, double x, double y, int is_support, const char* releases) {
+    Joint j = {0};
+    j.id = id;
+    j.x = x;
+    j.y = y;
+    j.is_support = is_support ? 1 : 0;
+    if (releases) {
+        snprintf(j.releases, sizeof(j.releases), "%s", releases);
+    }
+    return j;
+}
+
+static Member make_member(int id, int j1_id, int j2_id, double az, double iy, double ix) {
+    return (Member){.id = id, .j1_id = j1_id, .j2_id = j2_id, .az = az, .iy = iy, .ix = ix};
+}
+
+static JointLoad make_joint_load(int jid, char axis, double magnitude) {
+    return (JointLoad){.jid = jid, .axis = (char)toupper((unsigned char)axis), .magnitude = magnitude};
+}
+
+static MemberLoad make_member_load(int mid, char axis, char type, const double vals[4]) {
+    MemberLoad ml = {0};
+    ml.mid = mid;
+    ml.axis = (char)toupper((unsigned char)axis);
+    ml.type = (char)toupper((unsigned char)type);
+    if (vals) {
+        memcpy(ml.vals, vals, sizeof(ml.vals));
+    }
+    return ml;
+}
+
+/* StressModel setters & item mutators */
+int stress_model_set_E(StressModel* model, double E) {
+    if (!model) return -1;
+    model->E = E;
+    return 0;
+}
+
+int stress_model_set_G(StressModel* model, double G) {
+    if (!model) return -1;
+    model->G = G;
+    return 0;
+}
+
+int stress_model_set_type(StressModel* model, const char* type) {
+    if (!model || !type) return -1;
+    snprintf(model->type, sizeof(model->type), "%s", type);
+    return 0;
+}
+
+int stress_model_add_joint(StressModel* model, int id, double x, double y,
+                           int is_support, const char* releases) {
+    if (!model) return -1;
+    return stress_model_insert_joint(model, model->num_joints, id, x, y, is_support, releases);
+}
+
+int stress_model_insert_joint(StressModel* model, int index, int id, double x, double y,
+                              int is_support, const char* releases) {
+    if (!model) return -1;
+    Joint j = make_joint(id, x, y, is_support, releases);
+    return insert_item((void**)&model->joints, &model->num_joints, &model->max_joints,
+                       index, &j, sizeof(Joint));
+}
+
+int stress_model_update_joint(StressModel* model, int index, int id, double x, double y,
+                              int is_support, const char* releases) {
+    if (!model || index < 0 || index >= model->num_joints) return -1;
+    model->joints[index] = make_joint(id, x, y, is_support, releases);
+    return 0;
+}
+
+int stress_model_delete_joint(StressModel* model, int index) {
+    if (!model) return -1;
+    return delete_item(model->joints, &model->num_joints, index, sizeof(Joint));
+}
+
+int stress_model_add_member(StressModel* model, int id, int j1_id, int j2_id,
+                            double az, double iy, double ix) {
+    if (!model) return -1;
+    return stress_model_insert_member(model, model->num_members, id, j1_id, j2_id, az, iy, ix);
+}
+
+int stress_model_insert_member(StressModel* model, int index, int id, int j1_id, int j2_id,
+                               double az, double iy, double ix) {
+    if (!model) return -1;
+    Member m = make_member(id, j1_id, j2_id, az, iy, ix);
+    return insert_item((void**)&model->members, &model->num_members, &model->max_members,
+                       index, &m, sizeof(Member));
+}
+
+int stress_model_update_member(StressModel* model, int index, int id, int j1_id, int j2_id,
+                               double az, double iy, double ix) {
+    if (!model || index < 0 || index >= model->num_members) return -1;
+    model->members[index] = make_member(id, j1_id, j2_id, az, iy, ix);
+    return 0;
+}
+
+int stress_model_delete_member(StressModel* model, int index) {
+    if (!model) return -1;
+    return delete_item(model->members, &model->num_members, index, sizeof(Member));
+}
+
+int stress_model_add_joint_load(StressModel* model, int jid, char axis, double magnitude) {
+    if (!model) return -1;
+    return stress_model_insert_joint_load(model, model->num_joint_loads, jid, axis, magnitude);
+}
+
+int stress_model_insert_joint_load(StressModel* model, int index, int jid, char axis,
+                                   double magnitude) {
+    if (!model) return -1;
+    JointLoad jl = make_joint_load(jid, axis, magnitude);
+    return insert_item((void**)&model->joint_loads, &model->num_joint_loads,
+                       &model->max_joint_loads, index, &jl, sizeof(JointLoad));
+}
+
+int stress_model_update_joint_load(StressModel* model, int index, int jid, char axis,
+                                   double magnitude) {
+    if (!model || index < 0 || index >= model->num_joint_loads) return -1;
+    model->joint_loads[index] = make_joint_load(jid, axis, magnitude);
+    return 0;
+}
+
+int stress_model_delete_joint_load(StressModel* model, int index) {
+    if (!model) return -1;
+    return delete_item(model->joint_loads, &model->num_joint_loads, index, sizeof(JointLoad));
+}
+
+int stress_model_add_member_load(StressModel* model, int mid, char axis, char type,
+                                 const double vals[4]) {
+    if (!model) return -1;
+    return stress_model_insert_member_load(model, model->num_member_loads, mid, axis, type, vals);
+}
+
+int stress_model_insert_member_load(StressModel* model, int index, int mid, char axis,
+                                    char type, const double vals[4]) {
+    if (!model) return -1;
+    MemberLoad ml = make_member_load(mid, axis, type, vals);
+    return insert_item((void**)&model->member_loads, &model->num_member_loads,
+                       &model->max_member_loads, index, &ml, sizeof(MemberLoad));
+}
+
+int stress_model_update_member_load(StressModel* model, int index, int mid, char axis,
+                                    char type, const double vals[4]) {
+    if (!model || index < 0 || index >= model->num_member_loads) return -1;
+    model->member_loads[index] = make_member_load(mid, axis, type, vals);
+    return 0;
+}
+
+int stress_model_delete_member_load(StressModel* model, int index) {
+    if (!model) return -1;
+    return delete_item(model->member_loads, &model->num_member_loads, index, sizeof(MemberLoad));
+}

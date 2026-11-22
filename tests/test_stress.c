@@ -199,11 +199,69 @@ static void test_error_cases(void) {
     stress_free(mj);
 }
 
+static void test_mutators_from_scratch(void) {
+    StressModel* m = stress_create();
+    CHECK(m != NULL);
+
+    CHECK(stress_model_set_type(m, "PLANE GRID") == 0);
+    CHECK(strcmp(stress_model_get_type(m), "PLANE GRID") == 0);
+    CHECK(stress_model_set_E(m, 2.0e7) == 0);
+    CHECK(stress_model_set_G(m, 2.0e7 / 2.4) == 0);
+
+    // Add, insert, update, delete joints
+    CHECK(stress_model_add_joint(m, 1, 0.0, 0.0, 1, NULL) == 0);
+    CHECK(stress_model_add_joint(m, 3, 99.0, 0.0, 0, NULL) == 0);
+    CHECK(stress_model_insert_joint(m, 1, 999, 1.0, 0.0, 0, "MX") == 0);
+    CHECK(stress_model_get_num_joints(m) == 3);
+    CHECK(stress_joint_get_id(stress_model_get_joint(m, 1)) == 999);
+    CHECK(stress_model_delete_joint(m, 1) == 0);
+    CHECK(stress_model_get_num_joints(m) == 2);
+    CHECK(stress_model_update_joint(m, 1, 2, 4.0, 0.0, 0, NULL) == 0);
+    CHECK(stress_joint_get_id(stress_model_get_joint(m, 1)) == 2);
+
+    // Out-of-bounds checks
+    CHECK(stress_model_insert_joint(m, -1, 0, 0, 0, 0, NULL) == -1);
+    CHECK(stress_model_insert_joint(m, 3, 0, 0, 0, 0, NULL) == -1);
+    CHECK(stress_model_update_joint(m, 2, 0, 0, 0, 0, NULL) == -1);
+    CHECK(stress_model_delete_joint(m, 2) == -1);
+
+    // Members
+    CHECK(stress_model_add_member(m, 1, 1, 2, 1.0, 1.0e-3, 1.0e-3) == 0);
+    CHECK(stress_model_insert_member(m, 0, 2, 1, 2, 1.0, 1.0, 1.0) == 0);
+    CHECK(stress_model_delete_member(m, 0) == 0);
+    CHECK(stress_model_update_member(m, 0, 1, 1, 2, 1.0, 1.0e-3, 1.0e-3) == 0);
+    CHECK(stress_model_get_num_members(m) == 1);
+
+    // Joint loads
+    CHECK(stress_model_add_joint_load(m, 2, 'z', -5.0) == 0);
+    CHECK(stress_model_insert_joint_load(m, 0, 2, 'Z', -1.0) == 0);
+    CHECK(stress_model_delete_joint_load(m, 0) == 0);
+    CHECK(stress_model_update_joint_load(m, 0, 2, 'Z', -10.0) == 0);
+    CHECK(stress_model_get_num_joint_loads(m) == 1);
+
+    // Member loads (add then delete so only joint load remains)
+    double vals[4] = {-2.0, 0.0, 0.0, 0.0};
+    CHECK(stress_model_add_member_load(m, 1, 'Z', 'U', vals) == 0);
+    CHECK(stress_model_insert_member_load(m, 0, 1, 'Z', 'U', vals) == 0);
+    CHECK(stress_model_update_member_load(m, 0, 1, 'Z', 'C', vals) == 0);
+    CHECK(stress_model_delete_member_load(m, 1) == 0);
+    CHECK(stress_model_delete_member_load(m, 0) == 0);
+    CHECK(stress_model_get_num_member_loads(m) == 0);
+
+    CHECK(stress_solve(m) == 0);
+    double expected_w = -10.0 * 64.0 / (3.0 * stress_model_get_E(m) * 1.0e-3);
+    CHECK(approx(stress_model_get_displacements(m)[3], expected_w, 1e-9));
+    CHECK(approx(stress_model_get_reactions(m)[0], 10.0, 1e-6));
+
+    stress_free(m);
+}
+
 int main(void) {
     test_cantilever_point_load();
     test_simply_supported_uniform_load();
     test_getters_and_dynamic_growth();
     test_error_cases();
+    test_mutators_from_scratch();
     printf("All stress_solver tests passed.\n");
     return 0;
 }

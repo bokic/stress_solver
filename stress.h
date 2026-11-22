@@ -65,6 +65,42 @@ const char* stress_model_get_type(const StressModel* model);
 const double* stress_model_get_displacements(const StressModel* model);
 const double* stress_model_get_reactions(const StressModel* model);
 
+/* StressModel setters & item mutators (return 0 on success, -1 on error) */
+int stress_model_set_E(StressModel* model, double E);
+int stress_model_set_G(StressModel* model, double G);
+int stress_model_set_type(StressModel* model, const char* type);
+
+int stress_model_add_joint(StressModel* model, int id, double x, double y,
+                           int is_support, const char* releases);
+int stress_model_insert_joint(StressModel* model, int index, int id, double x, double y,
+                              int is_support, const char* releases);
+int stress_model_update_joint(StressModel* model, int index, int id, double x, double y,
+                              int is_support, const char* releases);
+int stress_model_delete_joint(StressModel* model, int index);
+
+int stress_model_add_member(StressModel* model, int id, int j1_id, int j2_id,
+                            double az, double iy, double ix);
+int stress_model_insert_member(StressModel* model, int index, int id, int j1_id, int j2_id,
+                               double az, double iy, double ix);
+int stress_model_update_member(StressModel* model, int index, int id, int j1_id, int j2_id,
+                               double az, double iy, double ix);
+int stress_model_delete_member(StressModel* model, int index);
+
+int stress_model_add_joint_load(StressModel* model, int jid, char axis, double magnitude);
+int stress_model_insert_joint_load(StressModel* model, int index, int jid, char axis,
+                                   double magnitude);
+int stress_model_update_joint_load(StressModel* model, int index, int jid, char axis,
+                                   double magnitude);
+int stress_model_delete_joint_load(StressModel* model, int index);
+
+int stress_model_add_member_load(StressModel* model, int mid, char axis, char type,
+                                 const double vals[4]);
+int stress_model_insert_member_load(StressModel* model, int index, int mid, char axis,
+                                    char type, const double vals[4]);
+int stress_model_update_member_load(StressModel* model, int index, int mid, char axis,
+                                    char type, const double vals[4]);
+int stress_model_delete_member_load(StressModel* model, int index);
+
 #ifdef __cplusplus
 }
 #endif
