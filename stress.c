@@ -241,10 +241,22 @@ static void solve_system(double* K, double* F, size_t n, double* U) {
 }
 
 int stress_solve(StressModel* model) {
+    if (!model || model->num_joints <= 0) return -1;
+
+    free(model->displacements);
+    model->displacements = NULL;
+    free(model->reactions);
+    model->reactions = NULL;
+
     int n = model->num_joints;
-    int dofs = n * 3;
+    size_t dofs = (size_t)n * 3;
     double* K = calloc(dofs * dofs, sizeof(double));
     double* F = calloc(dofs, sizeof(double));
+    if (!K || !F) {
+        free(K);
+        free(F);
+        return -1;
+    }
 
     // Assembly
     for (int i = 0; i < model->num_members; i++) {
@@ -343,6 +355,10 @@ int stress_solve(StressModel* model) {
 
     // Boundary Conditions & Solution
     int* free_dofs = malloc(dofs * sizeof(int));
+    if (!free_dofs) {
+        free(K); free(F);
+        return -1;
+    }
     size_t num_free = 0;
     for (int i = 0; i < n; i++) {
         if (!model->joints[i].is_support) {
@@ -362,21 +378,31 @@ int stress_solve(StressModel* model) {
 
     double* K_sub = calloc(num_free * num_free, sizeof(double));
     double* F_sub = calloc(num_free, sizeof(double));
+    double* U_sub = calloc(num_free, sizeof(double));
+    if (!K_sub || !F_sub || !U_sub) {
+        free(K); free(F); free(free_dofs); free(K_sub); free(F_sub); free(U_sub);
+        return -1;
+    }
     for(size_t r=0; r<num_free; r++) {
         F_sub[r] = F[free_dofs[r]];
         for(size_t col=0; col<num_free; col++) K_sub[r*num_free + col] = K[free_dofs[r]*dofs + free_dofs[col]];
     }
 
-    double* U_sub = calloc(num_free, sizeof(double));
     solve_system(K_sub, F_sub, num_free, U_sub);
 
     model->displacements = calloc(dofs, sizeof(double));
+    model->reactions = calloc(dofs, sizeof(double));
+    if (!model->displacements || !model->reactions) {
+        free(model->displacements); model->displacements = NULL;
+        free(model->reactions); model->reactions = NULL;
+        free(K); free(F); free(free_dofs); free(K_sub); free(F_sub); free(U_sub);
+        return -1;
+    }
     for(size_t i=0; i<num_free; i++) model->displacements[free_dofs[i]] = U_sub[i];
 
-    model->reactions = calloc(dofs, sizeof(double));
-    for(int r=0; r<dofs; r++) {
+    for(size_t r=0; r<dofs; r++) {
         double r_sum = 0;
-        for(int col=0; col<dofs; col++) r_sum += K[r*dofs+col] * model->displacements[col];
+        for(size_t col=0; col<dofs; col++) r_sum += K[r*dofs+col] * model->displacements[col];
         model->reactions[r] = r_sum - F[r];
     }
 
