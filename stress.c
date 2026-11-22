@@ -59,8 +59,14 @@ int stress_load_dat(StressModel* model, const char* filename) {
         trim(line);
         if (line[0] == 0 || line[0] == '*') continue;
 
-        if (strstr(line, "TYPE")) {
-            sscanf(line, "TYPE %s %s", model->type, model->type + 10); // Simple parse
+        if (strncmp(line, "TYPE", 4) == 0 && (line[4] == '\0' || isspace((unsigned char)line[4]))) {
+            char t1[16] = "", t2[16] = "";
+            int n_tok = sscanf(line + 4, "%15s %15s", t1, t2);
+            if (n_tok == 2) {
+                snprintf(model->type, sizeof(model->type), "%s %s", t1, t2);
+            } else if (n_tok == 1) {
+                snprintf(model->type, sizeof(model->type), "%s", t1);
+            }
             continue;
         }
         if (strstr(line, "CONSTANTS")) {
@@ -104,12 +110,12 @@ int stress_load_dat(StressModel* model, const char* filename) {
                 model->members[model->num_members++] = m;
             }
         } else if (strcmp(section, "PROP") == 0) {
-            int start, end;
+            int start = 0, end = 0;
             double az=0, iy=0, ix=0;
             if (strstr(line, "THRU")) {
-                sscanf(line, "%d THRU %d", &start, &end);
+                if (sscanf(line, "%d THRU %d", &start, &end) != 2) continue;
             } else {
-                sscanf(line, "%d", &start);
+                if (sscanf(line, "%d", &start) != 1) continue;
                 end = start;
             }
             char* p;
@@ -124,18 +130,24 @@ int stress_load_dat(StressModel* model, const char* filename) {
                 }
             }
         } else if (strcmp(section, "RELE") == 0) {
-            int jid;
-            sscanf(line, "%d", &jid);
+            int jid = 0;
+            if (sscanf(line, "%d", &jid) != 1) continue;
             for (int i=0; i < model->num_joints; i++) {
                 if (model->joints[i].id == jid) {
-                    if (strstr(line, "MOMENT X")) strcat(model->joints[i].releases, "MX");
-                    if (strstr(line, "MOMENT Y")) strcat(model->joints[i].releases, "MY");
+                    char* rel = model->joints[i].releases;
+                    size_t cap = sizeof(model->joints[i].releases);
+                    if (strstr(line, "MOMENT X") && !strstr(rel, "MX") && strlen(rel) + 2 < cap) {
+                        strcat(rel, "MX");
+                    }
+                    if (strstr(line, "MOMENT Y") && !strstr(rel, "MY") && strlen(rel) + 2 < cap) {
+                        strcat(rel, "MY");
+                    }
                 }
             }
         } else if (strcmp(section, "JLOAD") == 0) {
             JointLoad jl = {0};
-            char axis_str[8];
-            if (sscanf(line, "%d FORCE %s %lf", &jl.jid, axis_str, &jl.magnitude) == 3) {
+            char axis_str[8] = "";
+            if (sscanf(line, "%d FORCE %7s %lf", &jl.jid, axis_str, &jl.magnitude) == 3) {
                 jl.axis = axis_str[0];
                 if (ensure_capacity((void**)&model->joint_loads, &model->max_joint_loads,
                                     model->num_joint_loads, sizeof(JointLoad)) != 0) {
@@ -145,30 +157,33 @@ int stress_load_dat(StressModel* model, const char* filename) {
                 model->joint_loads[model->num_joint_loads++] = jl;
             }
         } else if (strcmp(section, "MLOAD") == 0) {
-            int start, end;
+            int start = 0, end = 0;
             if (strstr(line, "THRU")) {
-                sscanf(line, "%d THRU %d", &start, &end);
+                if (sscanf(line, "%d THRU %d", &start, &end) != 2) continue;
             } else {
-                sscanf(line, "%d", &start);
+                if (sscanf(line, "%d", &start) != 1) continue;
                 end = start;
             }
             MemberLoad ml = {0};
-            char axis_str[16], type_str[32];
+            char axis_str[16] = "", type_str[32] = "";
             char* f_ptr = strstr(line, "FORCE");
             if (f_ptr) {
-                sscanf(f_ptr, "FORCE %s %s", axis_str, type_str);
+                int consumed = 0;
+                if (sscanf(f_ptr, "FORCE %15s %31s%n", axis_str, type_str, &consumed) < 2) {
+                    continue;
+                }
                 ml.axis = axis_str[0];
                 ml.type = (strstr(type_str, "UNIFORM")) ? 'U' : 'C';
                 
                 // Parse up to 4 values after the type string
-                char* val_ptr = f_ptr + 6 + strlen(axis_str) + 1 + strlen(type_str);
+                char* val_ptr = f_ptr + consumed;
                 int v_idx = 0;
-                char* token = strtok(val_ptr, " ");
+                char* token = strtok(val_ptr, " \t");
                 while (token && v_idx < 4) {
                     if (isdigit((unsigned char)token[0]) || token[0] == '-' || token[0] == '.') {
-                        ml.vals[v_idx++] = atof(token);
+                        ml.vals[v_idx++] = strtod(token, NULL);
                     }
-                    token = strtok(NULL, " ");
+                    token = strtok(NULL, " \t");
                 }
 
                 for (int m_id = start; m_id <= end; m_id++) {
