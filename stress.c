@@ -135,12 +135,12 @@ int stress_load_dat(StressModel* model, const char* filename) {
         }
 
         // Section markers
-        if (strstr(line, "JOINT COOR")) { strcpy(section, "COOR"); continue; }
-        if (strstr(line, "MEMB INCI")) { strcpy(section, "INCI"); continue; }
-        if (strstr(line, "MEMBER PROPERTIES")) { strcpy(section, "PROP"); continue; }
-        if (strstr(line, "JOINT RELEASES")) { strcpy(section, "RELE"); continue; }
-        if (strstr(line, "JOINT LOADS")) { strcpy(section, "JLOAD"); continue; }
-        if (strstr(line, "MEMBER LOADS")) { strcpy(section, "MLOAD"); continue; }
+        if (strstr(line, "JOINT COOR")) { snprintf(section, sizeof(section), "COOR"); continue; }
+        if (strstr(line, "MEMB INCI")) { snprintf(section, sizeof(section), "INCI"); continue; }
+        if (strstr(line, "MEMBER PROPERTIES")) { snprintf(section, sizeof(section), "PROP"); continue; }
+        if (strstr(line, "JOINT RELEASES")) { snprintf(section, sizeof(section), "RELE"); continue; }
+        if (strstr(line, "JOINT LOADS")) { snprintf(section, sizeof(section), "JLOAD"); continue; }
+        if (strstr(line, "MEMBER LOADS")) { snprintf(section, sizeof(section), "MLOAD"); continue; }
         if (strstr(line, "SOLVE")) break;
 
         // Skip non-numeric lines in sections (like header commands)
