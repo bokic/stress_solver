@@ -69,10 +69,18 @@ int stress_load_dat(StressModel* model, const char* filename) {
             }
             continue;
         }
-        if (strstr(line, "CONSTANTS")) {
+        if (strncmp(line, "CONSTANTS", 9) == 0 && (line[9] == '\0' || isspace((unsigned char)line[9]))) {
+            double nu = 0.2;
             char* e_ptr = strstr(line, "E ");
             if (e_ptr) sscanf(e_ptr + 2, "%lf", &model->E);
-            model->G = model->E / (2.0 * (1.0 + 0.2));
+            char* p_ptr = strstr(line, "POISSON");
+            if (p_ptr) sscanf(p_ptr + 7, "%lf", &nu);
+            char* g_ptr = strstr(line, "G ");
+            if (g_ptr && sscanf(g_ptr + 2, "%lf", &model->G) == 1) {
+                /* explicit G */
+            } else {
+                model->G = model->E / (2.0 * (1.0 + nu));
+            }
             continue;
         }
 
@@ -147,8 +155,9 @@ int stress_load_dat(StressModel* model, const char* filename) {
         } else if (strcmp(section, "JLOAD") == 0) {
             JointLoad jl = {0};
             char axis_str[8] = "";
-            if (sscanf(line, "%d FORCE %7s %lf", &jl.jid, axis_str, &jl.magnitude) == 3) {
-                jl.axis = axis_str[0];
+            if (sscanf(line, "%d FORCE %7s %lf", &jl.jid, axis_str, &jl.magnitude) == 3 ||
+                sscanf(line, "%d MOMENT %7s %lf", &jl.jid, axis_str, &jl.magnitude) == 3) {
+                jl.axis = (char)toupper((unsigned char)axis_str[0]);
                 if (ensure_capacity((void**)&model->joint_loads, &model->max_joint_loads,
                                     model->num_joint_loads, sizeof(JointLoad)) != 0) {
                     fclose(f);
@@ -331,7 +340,10 @@ int stress_solve(StressModel* model) {
             free(K); free(F);
             return -1;
         }
-        if (model->joint_loads[i].axis == 'Z') F[idx*3] += model->joint_loads[i].magnitude;
+        char axis = model->joint_loads[i].axis;
+        if (axis == 'Z') F[idx*3] += model->joint_loads[i].magnitude;
+        else if (axis == 'X') F[idx*3+1] += model->joint_loads[i].magnitude;
+        else if (axis == 'Y') F[idx*3+2] += model->joint_loads[i].magnitude;
     }
     for (int i = 0; i < model->num_member_loads; i++) {
         MemberLoad ml = model->member_loads[i];
@@ -367,7 +379,11 @@ int stress_solve(StressModel* model) {
             }
         } else if (ml.type == 'C') {
             double p = ml.vals[0];
-            double a = (ml.vals[1] > 0) ? ml.vals[1] : L/2;
+            if (ml.vals[1] < 0.0 || ml.vals[1] > L) {
+                free(K); free(F);
+                return -1;
+            }
+            double a = (ml.vals[1] > 0.0) ? ml.vals[1] : L/2;
             double b = L - a;
             double fef_w1 = p * b*b * (3*a + b) / (L*L*L);
             double fef_m1 = p * a * b*b / (L*L);
