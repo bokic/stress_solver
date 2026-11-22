@@ -240,6 +240,13 @@ static void solve_system(double* K, double* F, size_t n, double* U) {
     }
 }
 
+static int find_joint_index(const StressModel* model, int jid) {
+    for (int j = 0; j < model->num_joints; j++) {
+        if (model->joints[j].id == jid) return j;
+    }
+    return -1;
+}
+
 int stress_solve(StressModel* model) {
     if (!model || model->num_joints <= 0) return -1;
 
@@ -261,15 +268,21 @@ int stress_solve(StressModel* model) {
     // Assembly
     for (int i = 0; i < model->num_members; i++) {
         Member m = model->members[i];
-        Joint *j1 = NULL, *j2 = NULL;
-        int idx1 = -1, idx2 = -1;
-        for (int j = 0; j < n; j++) {
-            if (model->joints[j].id == m.j1_id) { j1 = &model->joints[j]; idx1 = j; }
-            if (model->joints[j].id == m.j2_id) { j2 = &model->joints[j]; idx2 = j; }
+        int idx1 = find_joint_index(model, m.j1_id);
+        int idx2 = find_joint_index(model, m.j2_id);
+        if (idx1 < 0 || idx2 < 0) {
+            free(K); free(F);
+            return -1;
         }
+        const Joint* j1 = &model->joints[idx1];
+        const Joint* j2 = &model->joints[idx2];
         double dx = j2->x - j1->x;
         double dy = j2->y - j1->y;
         double L = sqrt(dx*dx + dy*dy);
+        if (L <= 1e-12) {
+            free(K); free(F);
+            return -1;
+        }
         double c = dx / L;
         double s = dy / L;
 
@@ -304,8 +317,11 @@ int stress_solve(StressModel* model) {
 
     // Loads
     for (int i = 0; i < model->num_joint_loads; i++) {
-        int idx = -1;
-        for(int j=0; j<n; j++) if(model->joints[j].id == model->joint_loads[i].jid) idx = j;
+        int idx = find_joint_index(model, model->joint_loads[i].jid);
+        if (idx < 0) {
+            free(K); free(F);
+            return -1;
+        }
         if (model->joint_loads[i].axis == 'Z') F[idx*3] += model->joint_loads[i].magnitude;
     }
     for (int i = 0; i < model->num_member_loads; i++) {
@@ -313,15 +329,21 @@ int stress_solve(StressModel* model) {
         Member* m = NULL;
         for(int j=0; j<model->num_members; j++) if(model->members[j].id == ml.mid) m = &model->members[j];
         if (!m) continue;
-        Joint *j1 = NULL, *j2 = NULL;
-        int idx1 = -1, idx2 = -1;
-        for (int j = 0; j < n; j++) {
-            if (model->joints[j].id == m->j1_id) { j1 = &model->joints[j]; idx1 = j; }
-            if (model->joints[j].id == m->j2_id) { j2 = &model->joints[j]; idx2 = j; }
+        int idx1 = find_joint_index(model, m->j1_id);
+        int idx2 = find_joint_index(model, m->j2_id);
+        if (idx1 < 0 || idx2 < 0) {
+            free(K); free(F);
+            return -1;
         }
+        const Joint* j1 = &model->joints[idx1];
+        const Joint* j2 = &model->joints[idx2];
         double dx = j2->x - j1->x;
         double dy = j2->y - j1->y;
         double L = sqrt(dx*dx + dy*dy);
+        if (L <= 1e-12) {
+            free(K); free(F);
+            return -1;
+        }
         double c = dx / L;
         double s = dy / L;
         if (ml.type == 'U') {
