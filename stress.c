@@ -7,7 +7,57 @@
 
 #define MAX_LINE 256
 
-StressModel* stress_create() {
+struct Joint {
+    int id;
+    double x, y;
+    int is_support;
+    char releases[8]; // e.g. "MX", "MY"
+};
+
+struct Member {
+    int id;
+    int j1_id, j2_id;
+    double az, iy, ix;
+};
+
+struct JointLoad {
+    int jid;
+    char axis; // 'Z', 'X', 'Y'
+    double magnitude;
+};
+
+struct MemberLoad {
+    int mid;
+    char axis;
+    char type; // 'U' for Uniform, 'C' for Conc
+    double vals[4];
+};
+
+struct StressModel {
+    Joint* joints;
+    int num_joints;
+    int max_joints;
+
+    Member* members;
+    int num_members;
+    int max_members;
+
+    JointLoad* joint_loads;
+    int num_joint_loads;
+    int max_joint_loads;
+
+    MemberLoad* member_loads;
+    int num_member_loads;
+    int max_member_loads;
+
+    double E, G;
+    char type[32];
+
+    double* displacements; // Array of 3*num_joints
+    double* reactions;     // Array of 3*num_joints
+};
+
+StressModel* stress_create(void) {
     StressModel* model = calloc(1, sizeof(StressModel));
     if (!model) return NULL;
     model->max_joints = 100;
@@ -469,4 +519,70 @@ void stress_free(StressModel* model) {
     free(model->displacements);
     free(model->reactions);
     free(model);
+}
+
+/* Joint getters */
+int stress_joint_get_id(const Joint* joint) { return joint ? joint->id : 0; }
+double stress_joint_get_x(const Joint* joint) { return joint ? joint->x : 0.0; }
+double stress_joint_get_y(const Joint* joint) { return joint ? joint->y : 0.0; }
+int stress_joint_get_is_support(const Joint* joint) { return joint ? joint->is_support : 0; }
+const char* stress_joint_get_releases(const Joint* joint) { return joint ? joint->releases : NULL; }
+
+/* Member getters */
+int stress_member_get_id(const Member* member) { return member ? member->id : 0; }
+int stress_member_get_j1_id(const Member* member) { return member ? member->j1_id : 0; }
+int stress_member_get_j2_id(const Member* member) { return member ? member->j2_id : 0; }
+double stress_member_get_az(const Member* member) { return member ? member->az : 0.0; }
+double stress_member_get_iy(const Member* member) { return member ? member->iy : 0.0; }
+double stress_member_get_ix(const Member* member) { return member ? member->ix : 0.0; }
+
+/* JointLoad getters */
+int stress_joint_load_get_jid(const JointLoad* load) { return load ? load->jid : 0; }
+char stress_joint_load_get_axis(const JointLoad* load) { return load ? load->axis : '\0'; }
+double stress_joint_load_get_magnitude(const JointLoad* load) { return load ? load->magnitude : 0.0; }
+
+/* MemberLoad getters */
+int stress_member_load_get_mid(const MemberLoad* load) { return load ? load->mid : 0; }
+char stress_member_load_get_axis(const MemberLoad* load) { return load ? load->axis : '\0'; }
+char stress_member_load_get_type(const MemberLoad* load) { return load ? load->type : '\0'; }
+const double* stress_member_load_get_vals(const MemberLoad* load) { return load ? load->vals : NULL; }
+
+/* StressModel getters */
+const Joint* stress_model_get_joint(const StressModel* model, int index) {
+    if (!model || index < 0 || index >= model->num_joints) return NULL;
+    return &model->joints[index];
+}
+int stress_model_get_num_joints(const StressModel* model) { return model ? model->num_joints : 0; }
+int stress_model_get_max_joints(const StressModel* model) { return model ? model->max_joints : 0; }
+
+const Member* stress_model_get_member(const StressModel* model, int index) {
+    if (!model || index < 0 || index >= model->num_members) return NULL;
+    return &model->members[index];
+}
+int stress_model_get_num_members(const StressModel* model) { return model ? model->num_members : 0; }
+int stress_model_get_max_members(const StressModel* model) { return model ? model->max_members : 0; }
+
+const JointLoad* stress_model_get_joint_load(const StressModel* model, int index) {
+    if (!model || index < 0 || index >= model->num_joint_loads) return NULL;
+    return &model->joint_loads[index];
+}
+int stress_model_get_num_joint_loads(const StressModel* model) { return model ? model->num_joint_loads : 0; }
+int stress_model_get_max_joint_loads(const StressModel* model) { return model ? model->max_joint_loads : 0; }
+
+const MemberLoad* stress_model_get_member_load(const StressModel* model, int index) {
+    if (!model || index < 0 || index >= model->num_member_loads) return NULL;
+    return &model->member_loads[index];
+}
+int stress_model_get_num_member_loads(const StressModel* model) { return model ? model->num_member_loads : 0; }
+int stress_model_get_max_member_loads(const StressModel* model) { return model ? model->max_member_loads : 0; }
+
+double stress_model_get_E(const StressModel* model) { return model ? model->E : 0.0; }
+double stress_model_get_G(const StressModel* model) { return model ? model->G : 0.0; }
+const char* stress_model_get_type(const StressModel* model) { return model ? model->type : NULL; }
+
+const double* stress_model_get_displacements(const StressModel* model) {
+    return model ? model->displacements : NULL;
+}
+const double* stress_model_get_reactions(const StressModel* model) {
+    return model ? model->reactions : NULL;
 }
