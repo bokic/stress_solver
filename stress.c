@@ -9,6 +9,7 @@
 
 StressModel* stress_create() {
     StressModel* model = calloc(1, sizeof(StressModel));
+    if (!model) return NULL;
     model->max_joints = 100;
     model->joints = calloc(model->max_joints, sizeof(Joint));
     model->max_members = 200;
@@ -17,7 +18,22 @@ StressModel* stress_create() {
     model->joint_loads = calloc(model->max_joint_loads, sizeof(JointLoad));
     model->max_member_loads = 200;
     model->member_loads = calloc(model->max_member_loads, sizeof(MemberLoad));
+    if (!model->joints || !model->members || !model->joint_loads || !model->member_loads) {
+        stress_free(model);
+        return NULL;
+    }
     return model;
+}
+
+static int ensure_capacity(void** arr, int* cap, int count, size_t elem_size) {
+    if (count < *cap) return 0;
+    int new_cap = (*cap > 0) ? (*cap * 2) : 16;
+    if (new_cap <= count) new_cap = count + 1;
+    void* tmp = realloc(*arr, (size_t)new_cap * elem_size);
+    if (!tmp) return -1;
+    *arr = tmp;
+    *cap = new_cap;
+    return 0;
 }
 
 static void trim(char* s) {
@@ -32,6 +48,7 @@ static void trim(char* s) {
 }
 
 int stress_load_dat(StressModel* model, const char* filename) {
+    if (!model || !filename) return -1;
     FILE* f = fopen(filename, "r");
     if (!f) return -1;
 
@@ -69,11 +86,21 @@ int stress_load_dat(StressModel* model, const char* filename) {
             Joint j = {0};
             if (sscanf(line, "%d %lf %lf", &j.id, &j.x, &j.y) >= 3) {
                 if (strstr(line, "SUPPORT")) j.is_support = 1;
+                if (ensure_capacity((void**)&model->joints, &model->max_joints,
+                                    model->num_joints, sizeof(Joint)) != 0) {
+                    fclose(f);
+                    return -1;
+                }
                 model->joints[model->num_joints++] = j;
             }
         } else if (strcmp(section, "INCI") == 0) {
             Member m = {0};
             if (sscanf(line, "%d %d %d", &m.id, &m.j1_id, &m.j2_id) == 3) {
+                if (ensure_capacity((void**)&model->members, &model->max_members,
+                                    model->num_members, sizeof(Member)) != 0) {
+                    fclose(f);
+                    return -1;
+                }
                 model->members[model->num_members++] = m;
             }
         } else if (strcmp(section, "PROP") == 0) {
@@ -110,6 +137,11 @@ int stress_load_dat(StressModel* model, const char* filename) {
             char axis_str[8];
             if (sscanf(line, "%d FORCE %s %lf", &jl.jid, axis_str, &jl.magnitude) == 3) {
                 jl.axis = axis_str[0];
+                if (ensure_capacity((void**)&model->joint_loads, &model->max_joint_loads,
+                                    model->num_joint_loads, sizeof(JointLoad)) != 0) {
+                    fclose(f);
+                    return -1;
+                }
                 model->joint_loads[model->num_joint_loads++] = jl;
             }
         } else if (strcmp(section, "MLOAD") == 0) {
@@ -141,9 +173,12 @@ int stress_load_dat(StressModel* model, const char* filename) {
 
                 for (int m_id = start; m_id <= end; m_id++) {
                     ml.mid = m_id;
-                    if (model->num_member_loads < model->max_member_loads) {
-                        model->member_loads[model->num_member_loads++] = ml;
+                    if (ensure_capacity((void**)&model->member_loads, &model->max_member_loads,
+                                        model->num_member_loads, sizeof(MemberLoad)) != 0) {
+                        fclose(f);
+                        return -1;
                     }
+                    model->member_loads[model->num_member_loads++] = ml;
                 }
             }
         }
