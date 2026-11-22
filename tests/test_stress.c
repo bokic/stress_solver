@@ -1,9 +1,17 @@
 #include "stress.h"
-#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define CHECK(cond)                                                             \
+    do {                                                                        \
+        if (!(cond)) {                                                          \
+            fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__,  \
+                    #cond);                                                     \
+            exit(1);                                                            \
+        }                                                                       \
+    } while (0)
 
 static int approx(double a, double b, double tol) {
     return fabs(a - b) <= tol;
@@ -11,7 +19,7 @@ static int approx(double a, double b, double tol) {
 
 static void test_cantilever_point_load(void) {
     StressModel* m = stress_create();
-    assert(m != NULL);
+    CHECK(m != NULL);
     m->E = 2.0e7;
     m->G = m->E / 2.4;
 
@@ -25,17 +33,17 @@ static void test_cantilever_point_load(void) {
     m->joint_loads[0] = (JointLoad){.jid = 2, .axis = 'Z', .magnitude = -10.0};
     m->num_joint_loads = 1;
 
-    assert(stress_solve(m) == 0);
+    CHECK(stress_solve(m) == 0);
 
     // w = P*L^3 / (3*E*I) = -10 * 64 / (3 * 2e7 * 1e-3) = -640 / 60000 = -0.0106666667
     double expected_w = -10.0 * 64.0 / (3.0 * m->E * 1.0e-3);
-    assert(approx(m->displacements[3], expected_w, 1e-9));
+    CHECK(approx(m->displacements[3], expected_w, 1e-9));
     // Vertical reaction at support 1 = +10.0
-    assert(approx(m->reactions[0], 10.0, 1e-6));
+    CHECK(approx(m->reactions[0], 10.0, 1e-6));
 
     // Re-solve should succeed cleanly without leaks
-    assert(stress_solve(m) == 0);
-    assert(approx(m->displacements[3], expected_w, 1e-9));
+    CHECK(stress_solve(m) == 0);
+    CHECK(approx(m->displacements[3], expected_w, 1e-9));
 
     stress_free(m);
 }
@@ -43,7 +51,7 @@ static void test_cantilever_point_load(void) {
 static void test_simply_supported_uniform_load(void) {
     const char* path = "/tmp/stress_test_ss.dat";
     FILE* f = fopen(path, "w");
-    assert(f != NULL);
+    CHECK(f != NULL);
     fprintf(f,
         "TYPE PLANE GRID\n"
         "CONSTANTS E 1.0e7\n"
@@ -65,18 +73,18 @@ static void test_simply_supported_uniform_load(void) {
     fclose(f);
 
     StressModel* m = stress_create();
-    assert(stress_load_dat(m, path) == 0);
-    assert(strcmp(m->type, "PLANE GRID") == 0);
-    assert(stress_solve(m) == 0);
+    CHECK(stress_load_dat(m, path) == 0);
+    CHECK(strcmp(m->type, "PLANE GRID") == 0);
+    CHECK(stress_solve(m) == 0);
 
     // Total load = -2.0 * 6.0 = -12.0 -> reactions at 1 and 3 are +6.0 each
-    assert(approx(m->reactions[0], 6.0, 1e-5));
-    assert(approx(m->reactions[6], 6.0, 1e-5));
+    CHECK(approx(m->reactions[0], 6.0, 1e-5));
+    CHECK(approx(m->reactions[6], 6.0, 1e-5));
 
     // Midspan deflection: 5 * w * L^4 / (384 * E * I)
     double L = 6.0;
     double expected_mid = 5.0 * (-2.0) * pow(L, 4) / (384.0 * m->E * 1.0e-3);
-    assert(approx(m->displacements[3], expected_mid, 1e-8));
+    CHECK(approx(m->displacements[3], expected_mid, 1e-8));
 
     stress_free(m);
     remove(path);
@@ -86,7 +94,7 @@ static void test_dynamic_growth_and_errors(void) {
     // > 100 joints and > 200 members
     const char* path = "/tmp/stress_test_large.dat";
     FILE* f = fopen(path, "w");
-    assert(f != NULL);
+    CHECK(f != NULL);
     fprintf(f, "TYPE PLANE GRID\nCONSTANTS E 2.0e7\nJOINT COOR\n");
     for (int i = 1; i <= 120; i++) {
         fprintf(f, "%d %.2f 0.0%s\n", i, (double)(i - 1), (i == 1) ? " SUPPORT" : "");
@@ -100,10 +108,10 @@ static void test_dynamic_growth_and_errors(void) {
     fclose(f);
 
     StressModel* m = stress_create();
-    assert(stress_load_dat(m, path) == 0);
-    assert(m->num_joints == 120);
-    assert(stress_solve(m) == 0);
-    assert(approx(m->reactions[0], 1.0, 1e-4));
+    CHECK(stress_load_dat(m, path) == 0);
+    CHECK(m->num_joints == 120);
+    CHECK(stress_solve(m) == 0);
+    CHECK(approx(m->reactions[0], 1.0, 1e-4));
     stress_free(m);
     remove(path);
 
@@ -116,7 +124,7 @@ static void test_dynamic_growth_and_errors(void) {
     sing->num_joints = 2;
     sing->members[0] = (Member){.id = 1, .j1_id = 1, .j2_id = 2, .az = 1.0, .iy = 1.0, .ix = 1.0};
     sing->num_members = 1;
-    assert(stress_solve(sing) == -1);
+    CHECK(stress_solve(sing) == -1);
     stress_free(sing);
 
     // Zero-length member
@@ -128,7 +136,7 @@ static void test_dynamic_growth_and_errors(void) {
     zl->num_joints = 2;
     zl->members[0] = (Member){.id = 1, .j1_id = 1, .j2_id = 2, .az = 1.0, .iy = 1.0, .ix = 1.0};
     zl->num_members = 1;
-    assert(stress_solve(zl) == -1);
+    CHECK(stress_solve(zl) == -1);
     stress_free(zl);
 
     // Missing joint ID
@@ -139,7 +147,7 @@ static void test_dynamic_growth_and_errors(void) {
     mj->num_joints = 1;
     mj->members[0] = (Member){.id = 1, .j1_id = 1, .j2_id = 99, .az = 1.0, .iy = 1.0, .ix = 1.0};
     mj->num_members = 1;
-    assert(stress_solve(mj) == -1);
+    CHECK(stress_solve(mj) == -1);
     stress_free(mj);
 }
 
