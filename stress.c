@@ -202,7 +202,7 @@ int stress_load_dat(StressModel* model, const char* filename) {
     return 0;
 }
 
-static void solve_system(double* K, double* F, size_t n, double* U) {
+static int solve_system(double* K, double* F, size_t n, double* U) {
     // Gaussian Elimination with Partial Pivoting
     for (size_t i = 0; i < n; i++) {
         // Pivot
@@ -210,15 +210,20 @@ static void solve_system(double* K, double* F, size_t n, double* U) {
         for (size_t j = i + 1; j < n; j++) {
             if (fabs(K[j * n + i]) > fabs(K[pivot * n + i])) pivot = j;
         }
-        // Swap rows
-        for (size_t k = i; k < n; k++) {
-            double temp = K[i * n + k];
-            K[i * n + k] = K[pivot * n + k];
-            K[pivot * n + k] = temp;
+        if (fabs(K[pivot * n + i]) <= 1e-12 || isnan(K[pivot * n + i])) {
+            return -1;
         }
-        double temp_f = F[i];
-        F[i] = F[pivot];
-        F[pivot] = temp_f;
+        // Swap rows
+        if (pivot != i) {
+            for (size_t k = i; k < n; k++) {
+                double temp = K[i * n + k];
+                K[i * n + k] = K[pivot * n + k];
+                K[pivot * n + k] = temp;
+            }
+            double temp_f = F[i];
+            F[i] = F[pivot];
+            F[pivot] = temp_f;
+        }
 
         // Eliminate
         for (size_t j = i + 1; j < n; j++) {
@@ -236,8 +241,12 @@ static void solve_system(double* K, double* F, size_t n, double* U) {
         for (size_t j = idx + 1; j < n; j++) {
             sum += K[idx * n + j] * U[j];
         }
+        if (fabs(K[idx * n + idx]) <= 1e-12 || isnan(K[idx * n + idx])) {
+            return -1;
+        }
         U[idx] = (F[idx] - sum) / K[idx * n + idx];
     }
+    return 0;
 }
 
 static int find_joint_index(const StressModel* model, int jid) {
@@ -410,7 +419,10 @@ int stress_solve(StressModel* model) {
         for(size_t col=0; col<num_free; col++) K_sub[r*num_free + col] = K[free_dofs[r]*dofs + free_dofs[col]];
     }
 
-    solve_system(K_sub, F_sub, num_free, U_sub);
+    if (solve_system(K_sub, F_sub, num_free, U_sub) != 0) {
+        free(K); free(F); free(free_dofs); free(K_sub); free(F_sub); free(U_sub);
+        return -1;
+    }
 
     model->displacements = calloc(dofs, sizeof(double));
     model->reactions = calloc(dofs, sizeof(double));
