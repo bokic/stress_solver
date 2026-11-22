@@ -22,10 +22,13 @@ StressModel* stress_create() {
 
 static void trim(char* s) {
     char* p = s;
-    int l = strlen(p);
-    while(l > 0 && isspace(p[l-1])) p[--l] = 0;
-    while(*p && isspace(*p)) p++;
-    memmove(s, p, l+1);
+    size_t l = strlen(p);
+    while (l > 0 && isspace((unsigned char)p[l - 1])) p[--l] = 0;
+    while (*p && isspace((unsigned char)*p)) {
+        p++;
+        l--;
+    }
+    memmove(s, p, l + 1);
 }
 
 int stress_load_dat(StressModel* model, const char* filename) {
@@ -60,7 +63,7 @@ int stress_load_dat(StressModel* model, const char* filename) {
         if (strstr(line, "SOLVE")) break;
 
         // Skip non-numeric lines in sections (like header commands)
-        if (!isdigit(line[0])) continue;
+        if (!isdigit((unsigned char)line[0])) continue;
 
         if (strcmp(section, "COOR") == 0) {
             Joint j = {0};
@@ -130,7 +133,7 @@ int stress_load_dat(StressModel* model, const char* filename) {
                 int v_idx = 0;
                 char* token = strtok(val_ptr, " ");
                 while (token && v_idx < 4) {
-                    if (isdigit(token[0]) || token[0] == '-' || token[0] == '.') {
+                    if (isdigit((unsigned char)token[0]) || token[0] == '-' || token[0] == '.') {
                         ml.vals[v_idx++] = atof(token);
                     }
                     token = strtok(NULL, " ");
